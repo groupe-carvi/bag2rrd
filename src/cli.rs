@@ -12,6 +12,7 @@ pub struct Cli {
 }
 
 #[derive(Subcommand, Debug)]
+#[allow(clippy::large_enum_variant)]
 pub enum Commands {
     /// List topics, types, message counts and time span of a bag
     Inspect {
@@ -64,6 +65,22 @@ pub enum Commands {
         /// Number of parallel flush workers for segments (>=1)
         #[arg(long = "flush-workers", default_value_t = 2)]
         flush_workers: usize,
+        /// Root frame name for logging transforms (default: "world")
+        #[arg(long = "root-frame", default_value = "world")]
+        root_frame: String,
+        /// Map ROS frame names to Rerun entity paths: FRAME=/rr/path (repeatable)
+        /// Example: --map-frame base_link=/world/base robot=/world/robot
+        #[arg(long = "map-frame", action = clap::ArgAction::Append)]
+        map_frame: Vec<String>,
+        /// Rename a ROS topic to a specific Rerun entity path: ROS_TOPIC=/rr/path (repeatable)
+        #[arg(long = "topic-rename", action = clap::ArgAction::Append)]
+        topic_rename: Vec<String>,
+        /// TF buffer duration in seconds to retain dynamic transforms
+        #[arg(long = "tf-buffer-seconds", default_value_t = 30.0)]
+        tf_buffer_seconds: f64,
+        /// TF sampling mode when an exact timestamp is missing: nearest|interpolate|none
+        #[arg(long = "tf-mode", default_value = "nearest")]
+        tf_mode: String,
     },
 
     /// Show supported ROS→Rerun mappings (stubbed until v0.4.0)

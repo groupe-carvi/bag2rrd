@@ -10,6 +10,53 @@ use std::sync::{
 };
 use std::time::Instant;
 
+use crate::mappings::tf::TfMode;
+
+/// Options for converting a ROS bag file to Rerun RRD format
+#[derive(Debug, Clone)]
+pub struct ConvertOptions {
+    /// Path to the input .bag file
+    pub bag_path: String,
+    /// Path to the output .rrd file
+    pub output_path: String,
+    /// Include only these topics (empty means include all)
+    pub include_topics: Vec<String>,
+    /// Exclude these topics
+    pub exclude_topics: Vec<String>,
+    /// Start time offset in seconds from bag start
+    pub start_time: Option<f64>,
+    /// End time offset in seconds from bag start
+    pub end_time: Option<f64>,
+    /// Dry run: show plan but don't write output
+    pub dry_run: bool,
+    /// Show progress bar
+    pub show_progress: bool,
+    /// Segment size (images kept) for parallel flush
+    pub segment_size: Option<usize>,
+    /// Use LineStrips2D instead of Points2D for LaserScan
+    pub scan_as_lines: bool,
+    /// GPS origin for ENU projection: "LAT,LON,ALT"
+    pub gps_origin: Option<String>,
+    /// Name of the GPS frame entity path
+    pub gps_frame: String,
+    /// Log a polyline path for GPS track
+    pub gps_path: bool,
+    /// Segment size in bytes for parallel flush
+    pub segment_bytes: Option<u64>,
+    /// Number of parallel flush workers
+    pub flush_workers: usize,
+    /// Root frame name for transforms
+    pub root_frame: String,
+    /// Map ROS frame names to Rerun entity paths: FRAME=/rr/path
+    pub frame_mappings: Vec<String>,
+    /// Rename ROS topics to Rerun entity paths: ROS_TOPIC=/rr/path
+    pub topic_renames: Vec<String>,
+    /// TF buffer duration in seconds
+    pub tf_buffer_seconds: f64,
+    /// TF sampling mode
+    pub tf_mode: TfMode,
+}
+
 #[derive(Debug)]
 #[allow(dead_code)]
 struct FlushJob {
@@ -19,33 +66,59 @@ struct FlushJob {
     raw_bytes_in_part: u64,
 }
 
-#[allow(clippy::too_many_arguments, clippy::collapsible_if)]
-pub fn convert_bag(
-    bag: &str,
-    out: &str,
-    include: Vec<String>,
-    exclude: Vec<String>,
-    start: Option<f64>,
-    end: Option<f64>,
-    dry_run: bool,
-    progress: bool,
-    segment_size: Option<usize>,
-    scan_as_lines: bool,
-    gps_origin: Option<String>,
-    _gps_frame: String,
-    gps_path: bool,
-    segment_bytes: Option<u64>,
-    flush_workers: usize,
-) -> Result<()> {
-    let bag_file = RosBag::new(bag).with_context(|| format!("failed to open bag: {}", bag))?;
+/// Convert a ROS bag file to Rerun RRD format
+///
+/// # Arguments
+///
+/// * `options` - Conversion options
+///
+/// # Returns
+///
+/// Returns `Ok(())` on success, or an error if conversion fails
+///
+/// # Example
+///
+/// ```rust,no_run
+/// use bag2rrd::{convert_bag, ConvertOptions, TfMode};
+///
+/// let options = ConvertOptions {
+///     bag_path: "input.bag".to_string(),
+///     output_path: "output.rrd".to_string(),
+///     include_topics: vec![],
+///     exclude_topics: vec![],
+///     start_time: None,
+///     end_time: None,
+///     dry_run: false,
+///     show_progress: true,
+///     segment_size: None,
+///     scan_as_lines: false,
+///     gps_origin: None,
+///     gps_frame: "gps_link".to_string(),
+///     gps_path: true,
+///     segment_bytes: None,
+///     flush_workers: 2,
+///     root_frame: "world".to_string(),
+///     frame_mappings: vec![],
+///     topic_renames: vec![],
+///     tf_buffer_seconds: 30.0,
+///     tf_mode: TfMode::Nearest,
+/// };
+///
+/// convert_bag(&options)?;
+/// # Ok::<(), anyhow::Error>(())
+/// ```
+pub fn convert_bag(options: &ConvertOptions) -> Result<()> {
+    let bag_file = RosBag::new(&options.bag_path).with_context(|| format!("failed to open bag: {}", options.bag_path))?;
+
+    let mut tf_graph = crate::mappings::tf::TfGraph::new();
 
     // filters
-    let include_set: Option<HashSet<&str>> = if include.is_empty() {
+    let include_set: Option<HashSet<&str>> = if options.include_topics.is_empty() {
         None
     } else {
-        Some(include.iter().map(|s| s.as_str()).collect())
+        Some(options.include_topics.iter().map(|s| s.as_str()).collect())
     };
-    let exclude_set: HashSet<&str> = exclude.iter().map(|s| s.as_str()).collect();
+    let exclude_set: HashSet<&str> = options.exclude_topics.iter().map(|s| s.as_str()).collect();
 
     // collect all chunks first since the iterator may not be restartable
     let chunks: Vec<_> = bag_file.chunk_records().collect::<Result<Vec<_>, _>>()?;
@@ -64,25 +137,25 @@ pub fn convert_bag(
     }
 
     // segmentation validation
-    if let Some(sz) = segment_size && sz == 0 {
+    if let Some(sz) = options.segment_size && sz == 0 {
         anyhow::bail!("segment-size must be > 0");
     }
-    if let Some(sz) = segment_bytes && sz == 0 {
+    if let Some(sz) = options.segment_bytes && sz == 0 {
         anyhow::bail!("segment-bytes must be > 0");
     }
-    if flush_workers == 0 {
+    if options.flush_workers == 0 {
         anyhow::bail!("flush-workers must be >= 1");
     }
-    let segmentation_enabled = (segment_size.is_some() || segment_bytes.is_some()) && !dry_run;
-    let seg_size = segment_size.unwrap_or(0) as u64;
-    let seg_bytes = segment_bytes.unwrap_or(0);
+    let segmentation_enabled = (options.segment_size.is_some() || options.segment_bytes.is_some()) && !options.dry_run;
+    let seg_size = options.segment_size.unwrap_or(0) as u64;
+    let seg_bytes = options.segment_bytes.unwrap_or(0);
 
     // Single-output recording (created lazily after first kept message for parity with segments)
     let mut rec: Option<rerun::RecordingStream> = None;
 
     // For segmentation derive base path components
     let (base_parent, base_stem, base_ext) = if segmentation_enabled {
-        let p = Path::new(out);
+        let p = Path::new(&options.output_path);
         let parent = p.parent().unwrap_or(Path::new(""));
         let stem = p.file_stem().and_then(|s| s.to_str()).unwrap_or("out");
         let ext = p.extension().and_then(|s| s.to_str()).unwrap_or("rrd");
@@ -139,7 +212,7 @@ pub fn convert_bag(
         .map(PathBuf::from)
         .unwrap_or_else(|_| std::env::temp_dir().join("bag2rrd_segments"));
     std::fs::create_dir_all(&tmp_dir)?;
-    let workers: Vec<_> = (0..flush_workers)
+    let workers: Vec<_> = (0..options.flush_workers)
         .map(|i| {
             let rx = flush_rx.clone();
             let tx = result_tx.clone();
@@ -149,7 +222,7 @@ pub fn convert_bag(
         .collect();
 
     // progress bar (unknown length)
-    let pb = if progress {
+    let pb = if options.show_progress {
         let pb = ProgressBar::new_spinner();
         pb.set_style(ProgressStyle::with_template("{spinner} {pos} msgs").unwrap());
         Some(pb)
@@ -220,15 +293,15 @@ pub fn convert_bag(
                         }
 
                         let ts_rel = (msg_data.time as f64 / 1_000_000_000.0) - bag_start_s;
-                        if let Some(s) = start && ts_rel < s {
+                        if let Some(s) = options.start_time && ts_rel < s {
                             continue;
                         }
-                        if let Some(e) = end && ts_rel > e {
+                        if let Some(e) = options.end_time && ts_rel > e {
                             continue;
                         }
 
                         topics.insert(topic.clone());
-                        if dry_run {
+                        if options.dry_run {
                             kept_msgs += 1;
                             if let Some(pb) = &pb {
                                 pb.inc(1);
@@ -244,14 +317,14 @@ pub fn convert_bag(
                                     &base_parent,
                                     &base_stem,
                                     &base_ext,
-                                    bag,
+                                    &options.bag_path,
                                     &tmp_dir,
                                     &mut current_tmp_path,
                                     &mut current_final_path,
                                 )?);
                             } else {
-                                let rec_id = format!("bag2rrd:{}", bag);
-                                rec = Some(rerun::RecordingStreamBuilder::new(rec_id).save(out)?);
+                                let rec_id = format!("bag2rrd:{}", options.bag_path);
+                                rec = Some(rerun::RecordingStreamBuilder::new(rec_id).save(&options.output_path)?);
                             }
                         }
 
@@ -315,7 +388,7 @@ pub fn convert_bag(
                                         topic,
                                         ts_rel,
                                         msg_data.data,
-                                        scan_as_lines,
+                                        options.scan_as_lines,
                                     )?;
                                 }
                                 kept_msgs += 1;
@@ -333,8 +406,8 @@ pub fn convert_bag(
                                         topic,
                                         ts_rel,
                                         msg_data.data,
-                                        gps_origin.as_deref(),
-                                        gps_path,
+                                        options.gps_origin.as_deref(),
+                                        options.gps_path,
                                     )?;
                                 }
                                 kept_msgs += 1;
@@ -344,6 +417,84 @@ pub fn convert_bag(
                                     segment_images += 1;
                                     segment_raw_bytes += msg_data.data.len() as u64;
                                 }
+                            }
+                            "tf2_msgs/TFMessage" => {
+                                if let Some(ref rec_ref) = rec {
+                                    tf_graph.ingest_tf_msg(rec_ref, ts_rel, msg_data.data, options.tf_buffer_seconds, &options.root_frame, &options.frame_mappings)?;
+                                }
+                                kept_msgs += 1;
+                                stats.raw_bytes += msg_data.data.len() as u64;
+                            }
+                            "tf/tfMessage" => {
+                                if let Some(ref rec_ref) = rec {
+                                    tf_graph.ingest_tf_msg(rec_ref, ts_rel, msg_data.data, options.tf_buffer_seconds, &options.root_frame, &options.frame_mappings)?;
+                                }
+                                kept_msgs += 1;
+                                stats.raw_bytes += msg_data.data.len() as u64;
+                            }
+                            "tf2_msgs/TFMessageStatic" => {
+                                if let Some(ref rec_ref) = rec {
+                                    tf_graph.ingest_tf_static_msg(rec_ref, msg_data.data, &options.root_frame, &options.frame_mappings)?;
+                                }
+                                kept_msgs += 1;
+                                stats.raw_bytes += msg_data.data.len() as u64;
+                            }
+                            "tf/tfMessageStatic" => {
+                                if let Some(ref rec_ref) = rec {
+                                    tf_graph.ingest_tf_static_msg(rec_ref, msg_data.data, &options.root_frame, &options.frame_mappings)?;
+                                }
+                                kept_msgs += 1;
+                                stats.raw_bytes += msg_data.data.len() as u64;
+                            }
+                            "nav_msgs/Odometry" => {
+                                if let Some(ref rec_ref) = rec {
+                                    crate::mappings::nav::odometry_to_rerun(
+                                        rec_ref,
+                                        topic,
+                                        ts_rel,
+                                        msg_data.data,
+                                        &options.root_frame,
+                                        &options.frame_mappings,
+                                        Some(&tf_graph),
+                                        options.tf_mode,
+                                    )?;
+                                }
+                                kept_msgs += 1;
+                                stats.raw_bytes += msg_data.data.len() as u64;
+                            }
+                            "geometry_msgs/PoseStamped" => {
+                                if let Some(ref rec_ref) = rec {
+                                    crate::mappings::nav::pose_stamped_to_rerun(
+                                        rec_ref,
+                                        topic,
+                                        ts_rel,
+                                        msg_data.data,
+                                        &options.root_frame,
+                                        &options.topic_renames,
+                                        &options.frame_mappings,
+                                        Some(&tf_graph),
+                                        options.tf_mode,
+                                    )?;
+                                }
+                                kept_msgs += 1;
+                                stats.raw_bytes += msg_data.data.len() as u64;
+                            }
+                            "nav_msgs/Path" => {
+                                if let Some(ref rec_ref) = rec {
+                                    crate::mappings::nav::path_to_rerun(
+                                        rec_ref,
+                                        topic,
+                                        ts_rel,
+                                        msg_data.data,
+                                        &options.root_frame,
+                                        &options.topic_renames,
+                                        &options.frame_mappings,
+                                        Some(&tf_graph),
+                                        options.tf_mode,
+                                    )?;
+                                }
+                                kept_msgs += 1;
+                                stats.raw_bytes += msg_data.data.len() as u64;
                             }
                             _ => {
                                 stats.skipped_type += 1;
@@ -415,10 +566,10 @@ pub fn convert_bag(
         total_msgs,
         kept_msgs,
         topics.len(),
-        out
+        options.output_path
     );
 
-    if !dry_run {
+    if !options.dry_run {
         eprintln!(
             "[bag2rrd][stats] images={} compressed_images={} pointclouds={} laserscans={} gps_fixes={} skipped_types={} filtered_out={} kept_msgs={} total_msgs={} raw_bytes={}",
             stats.images,
@@ -495,8 +646,8 @@ pub fn convert_bag(
                 stats.images + stats.compressed_images,
                 stats.raw_bytes
             );
-            flush_recording(rec_single, out, stats.raw_bytes, "[bag2rrd]");
-            eprintln!("[bag2rrd] Saved RRD: {}", out);
+            flush_recording(rec_single, &options.output_path, stats.raw_bytes, "[bag2rrd]");
+            eprintln!("[bag2rrd] Saved RRD: {}", options.output_path);
         } else {
             // Could happen if no messages matched filters
             eprintln!("[bag2rrd] no messages kept; nothing to flush");
