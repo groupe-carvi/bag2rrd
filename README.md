@@ -11,6 +11,21 @@
 cargo run -- --help
 ```
 
+## Testing
+
+Download a test ROS bag file and try the commands:
+
+```bash
+# Download test data (not tracked by git)
+./tests/download_test_bag.sh
+
+# Inspect the bag file
+cargo run -- inspect tests/data/race_1.bag
+
+# Convert to RRD (images only in v0.1.0)
+cargo run -- convert tests/data/race_1.bag output.rrd
+```
+
 ## Development quality
 
 ```bash

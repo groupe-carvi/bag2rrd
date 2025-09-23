@@ -2,3 +2,7 @@
 **/*.rs.bk
 Cargo.lock
 .DS_Store
+
+# Test data
+tests/data/
+*.bag
