@@ -1,0 +1,16 @@
+name: bag2rrd
+id: ari:cloud:compass:e489ce12-950f-402e-8d4e-940f40450fe5:component/d3e19302-71bb-4ac1-ba88-53bb212819ec/07f9a1fb-9219-4e31-b1fe-1423915e3293
+description: A ROSBag to Rerun .rrd converting cli tool.
+configVersion: 1
+typeId: SERVICE
+fields:
+  tier: 4
+links:
+  - name: null
+    type: REPOSITORY
+    url: https://github.com/groupe-carvi/bag2rrd
+relationships:
+  DEPENDS_ON: []
+labels:
+  - source:github
+customFields: null
