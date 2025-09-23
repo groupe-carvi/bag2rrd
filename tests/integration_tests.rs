@@ -2,6 +2,7 @@ use std::fs;
 use std::path::Path;
 use std::process::Command;
 
+#[cfg(feature = "integration_tests")]
 #[test]
 fn test_inspect_command() {
     // Use the downloaded test bag file
@@ -23,11 +24,21 @@ fn test_inspect_command() {
 
     // Check output format
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains("Topic"), "Output should contain topic information");
-    assert!(stdout.contains("Type"), "Output should contain type information");
-    assert!(stdout.contains("Count"), "Output should contain count information");
+    assert!(
+        stdout.contains("Topic"),
+        "Output should contain topic information"
+    );
+    assert!(
+        stdout.contains("Type"),
+        "Output should contain type information"
+    );
+    assert!(
+        stdout.contains("Count"),
+        "Output should contain count information"
+    );
 }
 
+#[cfg(feature = "integration_tests")]
 #[test]
 fn test_convert_command() {
     // Use the downloaded test bag file
@@ -49,12 +60,16 @@ fn test_convert_command() {
     assert!(output.status.success(), "Convert command failed");
 
     // Check that RRD file was created
-    assert!(Path::new(test_rrd_path).exists(), "RRD file should be created");
+    assert!(
+        Path::new(test_rrd_path).exists(),
+        "RRD file should be created"
+    );
 
     // Cleanup
     let _ = fs::remove_file(test_rrd_path);
 }
 
+#[cfg(feature = "integration_tests")]
 #[test]
 fn test_convert_with_filters() {
     // Use the downloaded test bag file
@@ -69,25 +84,33 @@ fn test_convert_with_filters() {
     // Run convert command with filters
     let output = Command::new("cargo")
         .args(&[
-            "run", "--",
+            "run",
+            "--",
             "convert",
             test_bag_path,
             test_rrd_path,
-            "--include", "/camera/image_raw",
-            "--start", "0.0",
-            "--end", "10.0",
-            "--progress"
+            "--include",
+            "/camera/image_raw",
+            "--start",
+            "0.0",
+            "--end",
+            "10.0",
+            "--progress",
         ])
         .output()
         .expect("Failed to run convert command with filters");
 
     // Check that it succeeded
-    assert!(output.status.success(), "Convert command with filters failed");
+    assert!(
+        output.status.success(),
+        "Convert command with filters failed"
+    );
 
     // Cleanup
     let _ = fs::remove_file(test_rrd_path);
 }
 
+#[cfg(feature = "integration_tests")]
 #[test]
 fn test_dry_run() {
     // Use the downloaded test bag file
@@ -105,18 +128,25 @@ fn test_dry_run() {
     // Run convert command with dry-run
     let output = Command::new("cargo")
         .args(&[
-            "run", "--",
+            "run",
+            "--",
             "convert",
             test_bag_path,
             test_rrd_path,
-            "--dry-run"
+            "--dry-run",
         ])
         .output()
         .expect("Failed to run convert command with dry-run");
 
     // Check that it succeeded
-    assert!(output.status.success(), "Convert command with dry-run failed");
+    assert!(
+        output.status.success(),
+        "Convert command with dry-run failed"
+    );
 
     // Check that RRD file was NOT created
-    assert!(!Path::new(test_rrd_path).exists(), "RRD file should not be created in dry-run");
+    assert!(
+        !Path::new(test_rrd_path).exists(),
+        "RRD file should not be created in dry-run"
+    );
 }
