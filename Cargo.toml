@@ -1,0 +1,31 @@
+[package]
+name = "bag2rrd"
+version = "0.0.1"
+edition = "2024"
+description = "CLI tool to convert ROS1 .bag files into Rerun .rrd files (rosbag=0.6.3, rerun=0.25.1)"
+authors = ["Groupe CARVI <dev@groupe-carvi.ai>"]
+license = "Apache-2.0"
+
+[dependencies]
+rosbag = "0.6.3"
+rerun = {version = "0.25.1", default-features = false, features = ["dataframe","data_loaders","sdk","glam","image","log"] }
+clap = { version = "4.5", features = ["derive"] }
+anyhow = "1.0"
+thiserror = "2.0.16"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+indicatif = "0.18.0"
+regex = "1.10"
+
+# added later in v0.2.0
+# proj = "0.27"
+# nalgebra = "0.32"
+
+[dev-dependencies]
+assert_cmd = "2.0"
+predicates = "3.1"
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = "s"
