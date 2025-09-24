@@ -53,12 +53,12 @@ pub enum Commands {
         /// GPS origin for ENU projection: "LAT,LON,ALT" (ellipsoidal meters)
         #[arg(long = "gps-origin")]
         gps_origin: Option<String>,
-        /// Name of the GPS frame entity path (for future TF integration)
-        #[arg(long = "gps-frame", default_value = "gps_link")]
-        gps_frame: String,
         /// Log a polyline path for GPS track
         #[arg(long = "gps-path", default_value_t = true)]
         gps_path: bool,
+        /// Path to EGM96 geoid grid file (.pgm) for altitude correction
+        #[arg(long = "gps-geoid")]
+        gps_geoid: Option<String>,
         /// Segment size in bytes (approx) before flushing a new part (in addition to --segment-size)
         #[arg(long = "segment-bytes")]
         segment_bytes: Option<u64>,
@@ -81,11 +81,14 @@ pub enum Commands {
         /// TF sampling mode when an exact timestamp is missing: nearest|interpolate|none
         #[arg(long = "tf-mode", default_value = "nearest")]
         tf_mode: String,
+        /// Key=value metadata entries to embed in the RRD (repeatable)
+        #[arg(long = "metadata", action = clap::ArgAction::Append)]
+        metadata: Vec<String>,
     },
 
-    /// Show supported ROS→Rerun mappings (stubbed until v0.4.0)
+    /// Show supported ROS→Rerun mappings
     Schema {},
 
-    /// Validate an .rrd file (stubbed until v0.4.0)
+    /// Validate an .rrd file
     Validate { rrd: String },
 }

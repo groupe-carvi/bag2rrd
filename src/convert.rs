@@ -37,10 +37,10 @@ pub struct ConvertOptions {
     pub scan_as_lines: bool,
     /// GPS origin for ENU projection: "LAT,LON,ALT"
     pub gps_origin: Option<String>,
-    /// Name of the GPS frame entity path
-    pub gps_frame: String,
     /// Log a polyline path for GPS track
     pub gps_path: bool,
+    /// Path to EGM96 geoid grid file for altitude correction
+    pub gps_geoid: Option<String>,
     /// Segment size in bytes for parallel flush
     pub segment_bytes: Option<u64>,
     /// Number of parallel flush workers
@@ -55,6 +55,8 @@ pub struct ConvertOptions {
     pub tf_buffer_seconds: f64,
     /// TF sampling mode
     pub tf_mode: TfMode,
+    /// Key=value metadata entries to embed in the RRD
+    pub metadata: Vec<String>,
 }
 
 #[derive(Debug)]
@@ -93,7 +95,6 @@ struct FlushJob {
 ///     segment_size: None,
 ///     scan_as_lines: false,
 ///     gps_origin: None,
-///     gps_frame: "gps_link".to_string(),
 ///     gps_path: true,
 ///     segment_bytes: None,
 ///     flush_workers: 2,
@@ -102,6 +103,8 @@ struct FlushJob {
 ///     topic_renames: vec![],
 ///     tf_buffer_seconds: 30.0,
 ///     tf_mode: TfMode::Nearest,
+///     metadata: vec![],
+///     gps_geoid: None,
 /// };
 ///
 /// convert_bag(&options)?;
@@ -326,6 +329,16 @@ pub fn convert_bag(options: &ConvertOptions) -> Result<()> {
                                 let rec_id = format!("bag2rrd:{}", options.bag_path);
                                 rec = Some(rerun::RecordingStreamBuilder::new(rec_id).save(&options.output_path)?);
                             }
+
+                            // Log metadata if provided
+                            if let Some(ref rec_ref) = rec {
+                                for metadata_entry in &options.metadata {
+                                    if let Some((key, value)) = metadata_entry.split_once('=') {
+                                        let metadata_path = format!("/metadata/{}", key.trim());
+                                        rec_ref.log(metadata_path, &rerun::archetypes::TextLog::new(value.trim()))?;
+                                    }
+                                }
+                            }
                         }
 
                         // dispatch by type
@@ -408,6 +421,7 @@ pub fn convert_bag(options: &ConvertOptions) -> Result<()> {
                                         msg_data.data,
                                         options.gps_origin.as_deref(),
                                         options.gps_path,
+                                        options.gps_geoid.as_deref(),
                                     )?;
                                 }
                                 kept_msgs += 1;

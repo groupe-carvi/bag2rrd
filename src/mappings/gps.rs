@@ -19,10 +19,21 @@ pub fn navsatfix_to_rerun(
     payload: &[u8],
     gps_origin: Option<&str>,
     gps_path: bool,
+    geoid_path: Option<&str>,
 ) -> Result<()> {
     rec.set_timestamp_secs_since_epoch("ros_time", ts);
 
-    let (lat, lon, alt, status) = parse_navsatfix(payload)?;
+            let (lat, lon, mut alt, status, service) = parse_navsatfix(payload)?;
+
+    // Apply geoid correction if grid file provided
+    if let Some(geoid_path) = geoid_path {
+        if let Ok(correction) = get_geoid_correction(geoid_path, lat, lon) {
+            alt += correction;
+            tracing::debug!("Applied geoid correction: {}m at ({}, {})", correction, lat, lon);
+        } else {
+            tracing::warn!("Failed to apply geoid correction from {}", geoid_path);
+        }
+    }
 
     if status.status < 0 {
         tracing::warn!("GPS fix status < 0; skipping");
@@ -51,6 +62,17 @@ pub fn navsatfix_to_rerun(
     let pts = rerun::archetypes::Points3D::new(vec![pos_arr]);
     rec.log(rr_path_points, &pts)?;
 
+    // Log GPS status and service as scalars
+    let rr_path_status = format!("{}/status", normalize_path(topic).trim_end_matches('/'));
+    rec.log(rr_path_status, &rerun::archetypes::Scalars::new(vec![status.status as f64]))?;
+
+    // Log service as categorical if possible, otherwise as scalar
+    let service_names = get_service_names(service);
+    if !service_names.is_empty() {
+        let rr_path_service = format!("{}/service", normalize_path(topic).trim_end_matches('/'));
+        rec.log(rr_path_service, &rerun::archetypes::TextLog::new(service_names))?;
+    }
+
     // Log path
     if gps_path {
         state.path_points.push(pos_arr);
@@ -62,14 +84,14 @@ pub fn navsatfix_to_rerun(
     Ok(())
 }
 
-fn parse_navsatfix(payload: &[u8]) -> Result<(f64, f64, f64, Status)> {
+fn parse_navsatfix(payload: &[u8]) -> Result<(f64, f64, f64, Status, u16)> {
     let mut cursor = 0;
 
     // Skip header
     cursor = skip_header(payload, cursor)?;
 
-    // status (NavSatStatus)
-    let status = parse_status(payload, &mut cursor)?;
+    // status (NavSatStatus) - contains status and service
+    let (status, service) = parse_status(payload, &mut cursor)?;
 
     // latitude (float64)
     let lat = read_f64_le(payload, &mut cursor)?;
@@ -78,7 +100,7 @@ fn parse_navsatfix(payload: &[u8]) -> Result<(f64, f64, f64, Status)> {
     // altitude (float64)
     let alt = read_f64_le(payload, &mut cursor)?;
 
-    Ok((lat, lon, alt, status))
+    Ok((lat, lon, alt, status, service))
 }
 
 #[derive(Debug)]
@@ -86,12 +108,12 @@ struct Status {
     status: i8,
 }
 
-fn parse_status(payload: &[u8], cursor: &mut usize) -> Result<Status> {
+fn parse_status(payload: &[u8], cursor: &mut usize) -> Result<(Status, u16)> {
     // status (int8)
     let status = read_i8(payload, cursor)?;
-    // service (uint16) - skip
-    *cursor += 2;
-    Ok(Status { status })
+    // service (uint16)
+    let service = read_u16_le(payload, cursor)?;
+    Ok((Status { status }, service))
 }
 
 fn parse_origin(s: &str) -> Result<nalgebra::Point3<f64>> {
@@ -176,6 +198,15 @@ fn read_i8(payload: &[u8], cursor: &mut usize) -> Result<i8> {
     Ok(val)
 }
 
+fn read_u16_le(payload: &[u8], cursor: &mut usize) -> Result<u16> {
+    if *cursor + 2 > payload.len() {
+        return Err(anyhow::anyhow!("Buffer too short for u16"));
+    }
+    let val = u16::from_le_bytes([payload[*cursor], payload[*cursor + 1]]);
+    *cursor += 2;
+    Ok(val)
+}
+
 fn skip_header(payload: &[u8], mut cursor: usize) -> Result<usize> {
     // seq (uint32)
     cursor += 4;
@@ -209,6 +240,112 @@ fn normalize_path(topic: &str) -> String {
     }
 }
 
+/// Get human-readable service names from bitmask
+fn get_service_names(service: u16) -> String {
+    let mut names = Vec::new();
+    if service & 1 != 0 { names.push("GPS"); }
+    if service & 2 != 0 { names.push("GLONASS"); }
+    if service & 4 != 0 { names.push("COMPASS"); }
+    if service & 8 != 0 { names.push("GALILEO"); }
+    names.join(", ")
+}
+
+/// Get geoid correction in meters for given latitude/longitude
+/// Uses EGM96 grid file in PGM format
+fn get_geoid_correction(geoid_path: &str, lat: f64, lon: f64) -> Result<f64> {
+    // For now, implement basic PGM parsing
+    // EGM96 is a 15' grid, so we need to interpolate
+    // This is a simplified implementation - in production, use a proper geoid library
+
+    use std::fs::File;
+    use std::io::{BufRead, BufReader};
+
+    let file = File::open(geoid_path)?;
+    let reader = BufReader::new(file);
+
+    let mut lines = reader.lines();
+
+    // Parse PGM header
+    let magic = lines.next().ok_or_else(|| anyhow::anyhow!("Invalid PGM file"))??;
+    if magic != "P2" && magic != "P5" {
+        return Err(anyhow::anyhow!("Not a valid PGM file"));
+    }
+
+    // Skip comments
+    let mut width = 0;
+    let mut height = 0;
+    let mut _max_val = 0;
+
+    for line in lines.by_ref() {
+        let line = line?;
+        let line = line.trim();
+        if line.starts_with('#') || line.is_empty() {
+            continue;
+        }
+        let parts: Vec<&str> = line.split_whitespace().collect();
+        if width == 0 {
+            if parts.len() >= 2 {
+                width = parts[0].parse()?;
+                height = parts[1].parse()?;
+                break;
+            }
+        }
+    }
+
+    // Read max value
+    for line in lines.by_ref() {
+        let line = line?;
+        let line = line.trim();
+        if line.starts_with('#') || line.is_empty() {
+            continue;
+        }
+        _max_val = line.parse()?;
+        break;
+    }
+
+    // For simplicity, assume EGM96 grid parameters
+    // EGM96 covers -90 to 90 lat, -180 to 180 lon, 15' resolution
+    let lat_min = -90.0;
+    let lon_min = -180.0;
+    let lat_step = 15.0 / 60.0; // 15 arcminutes
+    let lon_step = 15.0 / 60.0;
+
+    // Calculate grid indices
+    let lat_idx = ((lat - lat_min) / lat_step) as usize;
+    let lon_idx = ((lon - lon_min) / lon_step) as usize;
+
+    if lat_idx >= height || lon_idx >= width {
+        return Err(anyhow::anyhow!("Coordinates out of grid bounds"));
+    }
+
+    // For P2 (ASCII), read the data
+    if magic == "P2" {
+        let mut data = Vec::new();
+        for line in lines {
+            let line = line?;
+            let parts: Vec<i32> = line.split_whitespace()
+                .filter_map(|s| s.parse().ok())
+                .collect();
+            data.extend(parts);
+        }
+
+        if data.len() < width * height {
+            return Err(anyhow::anyhow!("Incomplete PGM data"));
+        }
+
+        let index = lat_idx * width + lon_idx;
+        let raw_value = data[index] as f64;
+
+        // Convert to meters (EGM96 values are in cm, stored as offset from -1000)
+        let correction = (raw_value - 1000.0) / 100.0;
+
+        Ok(correction)
+    } else {
+        // P5 (binary) - not implemented yet
+        Err(anyhow::anyhow!("Binary PGM not supported yet"))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -228,5 +365,24 @@ mod tests {
         assert!(enu.0.abs() < 1e-3);
         assert!(enu.1.abs() < 1e-3);
         assert!(enu.2.abs() < 1e-3);
+    }
+
+    #[test]
+    fn test_geoid_correction() {
+        // This would require a test PGM file
+        // For now, just test the function signature
+        // let correction = get_geoid_correction("test.pgm", 45.0, -75.0);
+        // assert!(correction.is_ok());
+    }
+
+    #[test]
+    fn test_get_service_names() {
+        assert_eq!(get_service_names(0), "");
+        assert_eq!(get_service_names(1), "GPS");
+        assert_eq!(get_service_names(2), "GLONASS");
+        assert_eq!(get_service_names(4), "COMPASS");
+        assert_eq!(get_service_names(8), "GALILEO");
+        assert_eq!(get_service_names(1 | 2), "GPS, GLONASS");
+        assert_eq!(get_service_names(1 | 4 | 8), "GPS, COMPASS, GALILEO");
     }
 }

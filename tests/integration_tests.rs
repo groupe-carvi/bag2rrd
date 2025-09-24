@@ -150,3 +150,54 @@ fn test_dry_run() {
         "RRD file should not be created in dry-run"
     );
 }
+
+#[cfg(feature = "integration_tests")]
+#[test]
+fn test_schema_command() {
+    // Run schema command
+    let output = Command::new("cargo")
+        .args(&["run", "--", "schema"])
+        .output()
+        .expect("Failed to run schema command");
+
+    // Check that it succeeded
+    assert!(output.status.success(), "Schema command failed");
+
+    // Check output contains expected mappings
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("sensor_msgs/Image"),
+        "Output should contain Image mapping"
+    );
+    assert!(
+        stdout.contains("sensor_msgs/NavSatFix"),
+        "Output should contain NavSatFix mapping"
+    );
+    assert!(
+        stdout.contains("v0.1.0"),
+        "Output should contain version information"
+    );
+}
+
+#[cfg(feature = "integration_tests")]
+#[test]
+fn test_validate_command_nonexistent_file() {
+    // Run validate command on nonexistent file
+    let output = Command::new("cargo")
+        .args(&["run", "--", "validate", "nonexistent.rrd"])
+        .output()
+        .expect("Failed to run validate command");
+
+    // Check that it failed
+    assert!(!output.status.success(), "Validate command should fail on nonexistent file");
+
+    // Check error message in both stdout and stderr
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let combined_output = format!("{}{}", stdout, stderr);
+    assert!(
+        combined_output.contains("FAILED") || combined_output.contains("does not exist"),
+        "Error message should indicate file not found. stdout: {}, stderr: {}",
+        stdout, stderr
+    );
+}

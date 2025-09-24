@@ -6,18 +6,21 @@
 - Writing via [`rerun = 0.25.1`]
 - Built in Rust, CLI via `clap`
 
-## Features (v0.3.0)
+## Features (v0.4.0)
 
 - **Images**: `sensor_msgs/Image`, `sensor_msgs/CompressedImage`
 - **PointClouds**: `sensor_msgs/PointCloud2` (with optional RGB colors)
 - **LaserScans**: `sensor_msgs/LaserScan` (as Points2D or LineStrips2D)
-- **GPS**: `sensor_msgs/NavSatFix` (ENU-projected Points3D + optional path)
+- **GPS**: `sensor_msgs/NavSatFix` (ENU-projected Points3D + optional path + geoid correction + status/service logging)
 - **TF**: `/tf`, `/tf_static` (time-aware TF graph with interpolation)
 - **Odometry**: `nav_msgs/Odometry` (as Transforms3D)
 - **PoseStamped**: `geometry_msgs/PoseStamped` (as Transforms3D)
 - **Path**: `nav_msgs/Path` (as LineStrips3D)
 - **Parallel flushing**: Background workers for faster segmentation
 - **Segmentation**: By image count or byte threshold
+- **Schema inspection**: View supported ROS→Rerun mappings
+- **Validation**: Basic RRD file structure validation
+- **Metadata embedding**: Add custom key=value metadata to RRD files
 
 ## Quick start
 ```bash
@@ -42,8 +45,18 @@ bag2rrd convert run03.bag run03.rrd --root-frame world \
 # Logging a path from PoseStamped
 bag2rrd convert run03.bag run03.rrd --topic-rename /slam/pose=/world/slam_pose
 
+# GPS with geoid correction and metadata
+bag2rrd convert run04.bag run04.rrd --gps-geoid egm96-15.pgm \
+  --metadata "vehicle=car123" --metadata "driver=test_driver"
+
 # Inspect bag contents
 bag2rrd inspect run02.bag
+
+# Show supported ROS→Rerun mappings
+bag2rrd schema
+
+# Validate an RRD file
+bag2rrd validate output.rrd
 ```
 
 ## Testing

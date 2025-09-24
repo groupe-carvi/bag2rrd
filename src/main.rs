@@ -7,6 +7,8 @@ mod convert;
 mod mappings;
 mod rosbags_io;
 mod rrd_writer;
+mod schema;
+mod validate;
 use cli::{Cli, Commands};
 use mappings::tf::parse_tf_mode;
 
@@ -32,7 +34,6 @@ fn main() -> Result<()> {
             segment_size,
             scan_as_lines,
             gps_origin,
-            gps_frame,
             gps_path,
             segment_bytes,
             flush_workers,
@@ -41,6 +42,8 @@ fn main() -> Result<()> {
             topic_rename,
             tf_buffer_seconds,
             tf_mode,
+            metadata,
+            gps_geoid,
         } => {
             let options = convert::ConvertOptions {
                 bag_path: bag,
@@ -54,7 +57,6 @@ fn main() -> Result<()> {
                 segment_size,
                 scan_as_lines,
                 gps_origin,
-                gps_frame,
                 gps_path,
                 segment_bytes,
                 flush_workers,
@@ -63,16 +65,16 @@ fn main() -> Result<()> {
                 topic_renames: topic_rename,
                 tf_buffer_seconds,
                 tf_mode: parse_tf_mode(&tf_mode)?,
+                metadata,
+                gps_geoid,
             };
             convert::convert_bag(&options)
         }
         Commands::Schema {} => {
-            println!("Image/CompressedImage only in v0.1.0");
-            Ok(())
+            schema::print_schema()
         }
         Commands::Validate { rrd } => {
-            println!("validate is planned for v0.4.0. input={}", rrd);
-            Ok(())
+            validate::validate_rrd(&rrd)
         }
     }
 }

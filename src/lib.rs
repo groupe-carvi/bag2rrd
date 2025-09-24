@@ -34,7 +34,6 @@
 //!     segment_size: None,
 //!     scan_as_lines: false,
 //!     gps_origin: None,
-//!     gps_frame: "gps_link".to_string(),
 //!     gps_path: true,
 //!     segment_bytes: None,
 //!     flush_workers: 2,
@@ -43,6 +42,8 @@
 //!     topic_renames: vec![],
 //!     tf_buffer_seconds: 30.0,
 //!     tf_mode: TfMode::Nearest,
+//!     metadata: vec![],
+//!     gps_geoid: None,
 //! };
 //!
 //! convert_bag(&options)?;
@@ -54,6 +55,8 @@ pub mod convert;
 pub mod mappings;
 pub mod rosbags_io;
 pub mod rrd_writer;
+pub mod schema;
+pub mod validate;
 
 // Re-export main types for convenience
 pub use convert::{convert_bag, ConvertOptions};
