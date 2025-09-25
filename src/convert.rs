@@ -276,6 +276,7 @@ pub fn convert_bag(options: &ConvertOptions) -> Result<()> {
         pointclouds: u64,
         laserscans: u64,
         gps_fixes: u64,
+        imu_msgs: u64,
         skipped_type: u64,
         filtered_out: u64,
         raw_bytes: u64,
@@ -462,6 +463,23 @@ pub fn convert_bag(options: &ConvertOptions) -> Result<()> {
                                     segment_raw_bytes += msg_data.data.len() as u64;
                                 }
                             }
+                            "sensor_msgs/Imu" => {
+                                if let Some(ref rec_ref) = rec {
+                                    crate::mappings::imu::imu_to_rerun(
+                                        rec_ref,
+                                        topic,
+                                        ts_rel,
+                                        msg_data.data,
+                                    )?;
+                                }
+                                kept_msgs += 1;
+                                stats.imu_msgs += 1;
+                                stats.raw_bytes += msg_data.data.len() as u64;
+                                if segmentation_enabled {
+                                    segment_images += 1;
+                                    segment_raw_bytes += msg_data.data.len() as u64;
+                                }
+                            }
                             "tf2_msgs/TFMessage" => {
                                 if let Some(ref rec_ref) = rec {
                                     tf_graph.ingest_tf_msg(rec_ref, ts_rel, msg_data.data, options.tf_buffer_seconds, &options.root_frame, &options.frame_mappings)?;
@@ -580,13 +598,14 @@ pub fn convert_bag(options: &ConvertOptions) -> Result<()> {
                         }
                         if let Some(n) = log_every && kept_msgs % n == 0 {
                             eprintln!(
-                                "[bag2rrd][progress] kept_msgs={} images={} compressed={} pointclouds={} laserscans={} gps_fixes={} skipped_type={} filtered={} elapsed={:?}",
+                                "[bag2rrd][progress] kept_msgs={} images={} compressed={} pointclouds={} laserscans={} gps_fixes={} imu_msgs={} skipped_type={} filtered={} elapsed={:?}",
                                 kept_msgs,
                                 stats.images,
                                 stats.compressed_images,
                                 stats.pointclouds,
                                 stats.laserscans,
                                 stats.gps_fixes,
+                                stats.imu_msgs,
                                 stats.skipped_type,
                                 stats.filtered_out,
                                 second_pass_start.elapsed()
@@ -615,12 +634,13 @@ pub fn convert_bag(options: &ConvertOptions) -> Result<()> {
 
     if !options.dry_run {
         eprintln!(
-            "[bag2rrd][stats] images={} compressed_images={} pointclouds={} laserscans={} gps_fixes={} skipped_types={} filtered_out={} kept_msgs={} total_msgs={} raw_bytes={}",
+            "[bag2rrd][stats] images={} compressed_images={} pointclouds={} laserscans={} gps_fixes={} imu_msgs={} skipped_types={} filtered_out={} kept_msgs={} total_msgs={} raw_bytes={}",
             stats.images,
             stats.compressed_images,
             stats.pointclouds,
             stats.laserscans,
             stats.gps_fixes,
+            stats.imu_msgs,
             stats.skipped_type,
             stats.filtered_out,
             kept_msgs,

@@ -12,6 +12,7 @@
 - **PointClouds**: `sensor_msgs/PointCloud2` (with optional RGB colors)
 - **LaserScans**: `sensor_msgs/LaserScan` (as Points2D or LineStrips2D)
 - **GPS**: `sensor_msgs/NavSatFix` (ENU-projected Points3D + optional path + geoid correction + status/service logging)
+- **IMU**: `sensor_msgs/Imu` (orientation as Transform3D, angular velocity & linear acceleration as Arrows3D, magnitudes as Scalars)
 - **TF**: `/tf`, `/tf_static` (time-aware TF graph with interpolation)
 - **Odometry**: `nav_msgs/Odometry` (as Transforms3D)
 - **PoseStamped**: `geometry_msgs/PoseStamped` (as Transforms3D)

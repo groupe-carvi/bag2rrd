@@ -61,8 +61,56 @@ pub fn image_to_rerun(
                         rerun::archetypes::Image::from_rgb24(rgb, [width as u32, height as u32]);
                     rec.log(rr_path, &img)?;
                 }
+                "8UC1" => {
+                    // 8-bit unsigned single channel (same as mono8)
+                    let mut rgb = Vec::with_capacity(width * height * 3);
+                    for &gray in data {
+                        rgb.extend_from_slice(&[gray, gray, gray]);
+                    }
+                    let img =
+                        rerun::archetypes::Image::from_rgb24(rgb, [width as u32, height as u32]);
+                    rec.log(rr_path, &img)?;
+                }
+                "8UC3" => {
+                    // 8-bit unsigned 3 channels (assume BGR order like OpenCV)
+                    let mut buf = data.to_vec();
+                    for px in buf.chunks_exact_mut(3) {
+                        px.swap(0, 2); // BGR→RGB
+                    }
+                    let img =
+                        rerun::archetypes::Image::from_rgb24(buf, [width as u32, height as u32]);
+                    rec.log(rr_path, &img)?;
+                }
+                "16UC1" => {
+                    // 16-bit unsigned single channel
+                    tracing::warn!("16UC1 not natively supported; scaling to 8-bit");
+                    let mut rgb = Vec::with_capacity(width * height * 3);
+                    for chunk in data.chunks_exact(2) {
+                        let v = u16::from_le_bytes([chunk[0], chunk[1]]);
+                        let gray = (v >> 8) as u8;
+                        rgb.extend_from_slice(&[gray, gray, gray]);
+                    }
+                    let img =
+                        rerun::archetypes::Image::from_rgb24(rgb, [width as u32, height as u32]);
+                    rec.log(rr_path, &img)?;
+                }
+                "32FC1" => {
+                    // 32-bit float single channel (depth images)
+                    tracing::warn!("32FC1 converted to depth image with scaling");
+                    let depths: Vec<f32> = data
+                        .chunks_exact(4)
+                        .map(|chunk| f32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]))
+                        .collect();
+                    
+                    // Convert to depth image with meter unit
+                    let depth_img = rerun::archetypes::DepthImage::try_from(depths)
+                        .with_context(|| "Failed to create depth image")?
+                        .with_meter(1.0); // Assuming depths are in meters
+                    
+                    rec.log(rr_path, &depth_img)?;
+                }
                 other => {
-                    tracing::warn!(%other, "unsupported encoding; skipping");
+                    tracing::debug!(%other, "unsupported image encoding; skipping message");
                 }
             }
         }

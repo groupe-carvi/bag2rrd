@@ -13,6 +13,7 @@ pub fn print_schema() -> Result<()> {
         ("sensor_msgs/PointCloud2", "Points3D", "v0.2.0"),
         ("sensor_msgs/LaserScan", "Points2D/LineStrips2D", "v0.2.0"),
         ("sensor_msgs/NavSatFix", "Points3D (+path optional)", "v0.2.0"),
+        ("sensor_msgs/Imu", "Transform3D + Arrows3D + Scalar", "v0.5.0"),
         ("/tf, /tf_static", "Transforms3D", "v0.3.0"),
         ("nav_msgs/Odometry", "Transforms3D", "v0.3.0"),
         ("geometry_msgs/PoseStamped", "Transforms3D", "v0.3.0"),

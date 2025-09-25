@@ -10,6 +10,7 @@
 //! - **PointClouds**: `sensor_msgs/PointCloud2` with optional RGB colors
 //! - **LaserScans**: `sensor_msgs/LaserScan` as Points2D or LineStrips2D
 //! - **GPS**: `sensor_msgs/NavSatFix` with ENU projection and path tracking
+//! - **IMU**: `sensor_msgs/Imu` with orientation, angular velocity, and linear acceleration
 //! - **TF**: `/tf`, `/tf_static` with time-aware transform resolution
 //! - **Odometry**: `nav_msgs/Odometry` as Transforms3D
 //! - **PoseStamped**: `geometry_msgs/PoseStamped` as Transforms3D
