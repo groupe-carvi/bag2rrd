@@ -44,6 +44,7 @@ fn main() -> Result<()> {
             tf_mode,
             metadata,
             gps_geoid,
+            tolerate_corruption,
         } => {
             let options = convert::ConvertOptions {
                 bag_path: bag,
@@ -67,6 +68,7 @@ fn main() -> Result<()> {
                 tf_mode: parse_tf_mode(&tf_mode)?,
                 metadata,
                 gps_geoid,
+                tolerate_corruption,
             };
             convert::convert_bag(&options)
         }
@@ -75,6 +77,9 @@ fn main() -> Result<()> {
         }
         Commands::Validate { rrd } => {
             validate::validate_rrd(&rrd)
+        }
+        Commands::Diagnose { bag } => {
+            rosbags_io::diagnose_bag(&bag)
         }
     }
 }

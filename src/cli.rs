@@ -84,6 +84,9 @@ pub enum Commands {
         /// Key=value metadata entries to embed in the RRD (repeatable)
         #[arg(long = "metadata", action = clap::ArgAction::Append)]
         metadata: Vec<String>,
+        /// Tolerate bag file corruption by skipping corrupted chunks
+        #[arg(long = "tolerate-corruption", default_value_t = false)]
+        tolerate_corruption: bool,
     },
 
     /// Show supported ROS→Rerun mappings
@@ -91,4 +94,10 @@ pub enum Commands {
 
     /// Validate an .rrd file
     Validate { rrd: String },
+
+    /// Diagnose bag file corruption and structure issues
+    Diagnose {
+        /// Path to the .bag file
+        bag: String,
+    },
 }

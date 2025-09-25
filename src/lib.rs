@@ -61,3 +61,4 @@ pub mod validate;
 // Re-export main types for convenience
 pub use convert::{convert_bag, ConvertOptions};
 pub use mappings::tf::{TfGraph, TfMode, TfSample};
+pub use rosbags_io::diagnose_bag;

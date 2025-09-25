@@ -57,6 +57,8 @@ pub struct ConvertOptions {
     pub tf_mode: TfMode,
     /// Key=value metadata entries to embed in the RRD
     pub metadata: Vec<String>,
+    /// Tolerate bag file corruption by skipping corrupted chunks
+    pub tolerate_corruption: bool,
 }
 
 #[derive(Debug)]
@@ -124,7 +126,34 @@ pub fn convert_bag(options: &ConvertOptions) -> Result<()> {
     let exclude_set: HashSet<&str> = options.exclude_topics.iter().map(|s| s.as_str()).collect();
 
     // collect all chunks first since the iterator may not be restartable
-    let chunks: Vec<_> = bag_file.chunk_records().collect::<Result<Vec<_>, _>>()?;
+    let chunks: Vec<_> = if options.tolerate_corruption {
+        let mut valid_chunks = Vec::new();
+        let mut chunk_count = 0;
+        let mut corrupted_count = 0;
+
+        for chunk_result in bag_file.chunk_records() {
+            chunk_count += 1;
+            match chunk_result {
+                Ok(chunk) => valid_chunks.push(chunk),
+                Err(e) => {
+                    corrupted_count += 1;
+                    tracing::warn!("Skipping corrupted chunk #{}: {}", chunk_count, e);
+                }
+            }
+        }
+
+        if corrupted_count > 0 {
+            tracing::warn!(
+                "Skipped {} corrupted chunks out of {} total chunks",
+                corrupted_count,
+                chunk_count
+            );
+        }
+
+        valid_chunks
+    } else {
+        bag_file.chunk_records().collect::<Result<Vec<_>, _>>()?
+    };
 
     // collect connections first
     let mut connections = std::collections::BTreeMap::new();
