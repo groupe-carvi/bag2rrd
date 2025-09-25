@@ -107,6 +107,7 @@ struct FlushJob {
 ///     tf_mode: TfMode::Nearest,
 ///     metadata: vec![],
 ///     gps_geoid: None,
+///     tolerate_corruption: false,
 /// };
 ///
 /// convert_bag(&options)?;

@@ -20,8 +20,18 @@
 //! # Example
 //!
 //! ```rust,no_run
-//! use bag2rrd::{convert_bag, ConvertOptions, TfMode};
+//! use bag2rrd::{convert_bag, ConvertOptions, inspect_bag, diagnose_bag, print_schema, validate_rrd, TfMode};
 //!
+//! // Inspect a bag file
+//! inspect_bag("input.bag")?;
+//!
+//! // Diagnose bag file corruption
+//! diagnose_bag("input.bag")?;
+//!
+//! // Print supported ROS→Rerun mappings
+//! print_schema()?;
+//!
+//! // Convert a bag file
 //! let options = ConvertOptions {
 //!     bag_path: "input.bag".to_string(),
 //!     output_path: "output.rrd".to_string(),
@@ -44,9 +54,13 @@
 //!     tf_mode: TfMode::Nearest,
 //!     metadata: vec![],
 //!     gps_geoid: None,
+//!     tolerate_corruption: false,
 //! };
 //!
 //! convert_bag(&options)?;
+//!
+//! // Validate the output RRD file
+//! validate_rrd("output.rrd")?;
 //! # Ok::<(), anyhow::Error>(())
 //! ```
 
@@ -61,4 +75,6 @@ pub mod validate;
 // Re-export main types for convenience
 pub use convert::{convert_bag, ConvertOptions};
 pub use mappings::tf::{TfGraph, TfMode, TfSample};
-pub use rosbags_io::diagnose_bag;
+pub use rosbags_io::{diagnose_bag, inspect_bag};
+pub use schema::print_schema;
+pub use validate::validate_rrd;

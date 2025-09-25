@@ -21,6 +21,61 @@
 - **Schema inspection**: View supported ROS→Rerun mappings
 - **Validation**: Basic RRD file structure validation
 - **Metadata embedding**: Add custom key=value metadata to RRD files
+- **Corruption tolerance**: Skip corrupted chunks in damaged bag files
+
+## Library Usage
+
+Add to your `Cargo.toml`:
+
+```toml
+[dependencies]
+bag2rrd = "0.4"
+```
+
+```rust
+use bag2rrd::{convert_bag, ConvertOptions, inspect_bag, diagnose_bag, print_schema, validate_rrd, TfMode};
+
+// Inspect a bag file
+inspect_bag("input.bag")?;
+
+// Diagnose bag file corruption
+diagnose_bag("input.bag")?;
+
+// Print supported ROS→Rerun mappings
+print_schema()?;
+
+// Convert a bag file
+let options = ConvertOptions {
+    bag_path: "input.bag".to_string(),
+    output_path: "output.rrd".to_string(),
+    include_topics: vec![],
+    exclude_topics: vec![],
+    start_time: None,
+    end_time: None,
+    dry_run: false,
+    show_progress: true,
+    segment_size: None,
+    scan_as_lines: false,
+    gps_origin: None,
+    gps_path: true,
+    segment_bytes: None,
+    flush_workers: 2,
+    root_frame: "world".to_string(),
+    frame_mappings: vec![],
+    topic_renames: vec![],
+    tf_buffer_seconds: 30.0,
+    tf_mode: TfMode::Nearest,
+    metadata: vec![],
+    gps_geoid: None,
+    tolerate_corruption: false,
+};
+
+convert_bag(&options)?;
+
+// Validate the output RRD file
+validate_rrd("output.rrd")?;
+```
+```
 
 ## Quick start
 ```bash
