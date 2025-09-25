@@ -59,6 +59,8 @@ pub struct ConvertOptions {
     pub metadata: Vec<String>,
     /// Tolerate bag file corruption by skipping corrupted chunks
     pub tolerate_corruption: bool,
+    /// Point cloud rotation in degrees as [roll, pitch, yaw] (XYZ Euler angles)
+    pub pointcloud_rotation: Option<[f64; 3]>,
 }
 
 #[derive(Debug)]
@@ -415,6 +417,7 @@ pub fn convert_bag(options: &ConvertOptions) -> Result<()> {
                                         topic,
                                         ts_rel,
                                         msg_data.data,
+                                        options.pointcloud_rotation.as_ref(),
                                     )?;
                                 }
                                 kept_msgs += 1;

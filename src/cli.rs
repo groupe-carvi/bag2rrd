@@ -87,6 +87,9 @@ pub enum Commands {
         /// Tolerate bag file corruption by skipping corrupted chunks
         #[arg(long = "tolerate-corruption", default_value_t = false)]
         tolerate_corruption: bool,
+        /// Point cloud rotation in degrees "roll,pitch,yaw" (applied as XYZ Euler angles)
+        #[arg(long = "pointcloud-rotation")]
+        pointcloud_rotation: Option<String>,
     },
 
     /// Show supported ROS→Rerun mappings

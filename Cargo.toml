@@ -1,6 +1,6 @@
 [package]
 name = "bag2rrd"
-version = "0.5.0"
+version = "0.5.1"
 edition = "2024"
 description = "CLI tool to convert ROS1 .bag files into Rerun .rrd files (rosbag=0.6.3, rerun=0.25.1)"
 authors = ["Groupe CARVI <dev@groupe-carvi.ai>"]

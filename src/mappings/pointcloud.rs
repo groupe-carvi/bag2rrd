@@ -3,15 +3,54 @@
 use anyhow::Result;
 use rerun::components::Position3D;
 
+/// Applies a 3D rotation defined by Euler angles (roll, pitch, yaw) in degrees
+/// to the coordinates of a point (x, y, z)
+fn apply_rotation(x: f32, y: f32, z: f32, rotation: &[f64; 3]) -> (f32, f32, f32) {
+    // Convert degrees to radians
+    let roll = rotation[0].to_radians();
+    let pitch = rotation[1].to_radians();
+    let yaw = rotation[2].to_radians();
+    
+    // Calculate cosines and sines
+    let cos_roll = roll.cos() as f32;
+    let sin_roll = roll.sin() as f32;
+    let cos_pitch = pitch.cos() as f32;
+    let sin_pitch = pitch.sin() as f32;
+    let cos_yaw = yaw.cos() as f32;
+    let sin_yaw = yaw.sin() as f32;
+    
+    // XYZ rotation matrix (Roll-Pitch-Yaw)
+    // Rotation = Rz(yaw) * Ry(pitch) * Rx(roll)
+    let r11 = cos_yaw * cos_pitch;
+    let r12 = cos_yaw * sin_pitch * sin_roll - sin_yaw * cos_roll;
+    let r13 = cos_yaw * sin_pitch * cos_roll + sin_yaw * sin_roll;
+    
+    let r21 = sin_yaw * cos_pitch;
+    let r22 = sin_yaw * sin_pitch * sin_roll + cos_yaw * cos_roll;
+    let r23 = sin_yaw * sin_pitch * cos_roll - cos_yaw * sin_roll;
+    
+    let r31 = -sin_pitch;
+    let r32 = cos_pitch * sin_roll;
+    let r33 = cos_pitch * cos_roll;
+    
+    // Apply rotation matrix
+    let x_rot = r11 * x + r12 * y + r13 * z;
+    let y_rot = r21 * x + r22 * y + r23 * z;
+    let z_rot = r31 * x + r32 * y + r33 * z;
+    
+    (x_rot, y_rot, z_rot)
+}
+
 pub fn pointcloud2_to_rerun(
     rec: &rerun::RecordingStream,
     topic: &str,
     ts: f64,
     payload: &[u8],
+    rotation: Option<&[f64; 3]>,
 ) -> Result<()> {
     rec.set_timestamp_secs_since_epoch("ros_time", ts);
 
-    let (positions, colors) = parse_pointcloud2(payload)?;
+    let (positions, colors) = parse_pointcloud2(payload, rotation)?;
 
     let rr_path = normalize_path(topic);
     let pts = rerun::archetypes::Points3D::new(positions);
@@ -26,7 +65,7 @@ pub fn pointcloud2_to_rerun(
 }
 
 #[allow(clippy::type_complexity, clippy::collapsible_if)]
-pub fn parse_pointcloud2(payload: &[u8]) -> Result<(Vec<Position3D>, Option<Vec<[u8; 3]>>)> {
+pub fn parse_pointcloud2(payload: &[u8], rotation: Option<&[f64; 3]>) -> Result<(Vec<Position3D>, Option<Vec<[u8; 3]>>)> {
     let mut cursor = 0;
 
     // Parse header (std_msgs/Header) - skip for now
@@ -114,7 +153,14 @@ pub fn parse_pointcloud2(payload: &[u8]) -> Result<(Vec<Position3D>, Option<Vec<
             continue; // skip NaN/Inf
         }
 
-        positions.push(Position3D::new(x, y, z));
+        // Apply rotation if provided
+        let (final_x, final_y, final_z) = if let Some(rot) = rotation {
+            apply_rotation(x, y, z, rot)
+        } else {
+            (x, y, z)
+        };
+
+        positions.push(Position3D::new(final_x, final_y, final_z));
 
         if let Some(colors_vec) = &mut colors {
             if let Some(off) = color_off {
@@ -290,7 +336,7 @@ mod tests {
         // is_dense
         data.extend_from_slice(&1u8.to_le_bytes());
 
-        let (positions, colors) = parse_pointcloud2(&data).unwrap();
+        let (positions, colors) = parse_pointcloud2(&data, None).unwrap();
 
         assert_eq!(positions.len(), 4);
         assert_eq!(colors.as_ref().unwrap().len(), 4);

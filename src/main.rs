@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use clap::Parser;
 use tracing_subscriber::{EnvFilter, fmt};
 
@@ -11,6 +11,22 @@ mod schema;
 mod validate;
 use cli::{Cli, Commands};
 use mappings::tf::parse_tf_mode;
+
+fn parse_pointcloud_rotation(rotation_str: &str) -> Result<[f64; 3]> {
+    let parts: Vec<&str> = rotation_str.split(',').collect();
+    if parts.len() != 3 {
+        return Err(anyhow!("The rotation must contain exactly 3 values separated by commas (roll,pitch,yaw)"));
+    }
+    
+    let roll = parts[0].trim().parse::<f64>()
+        .map_err(|_| anyhow!("Failed to parse roll: '{}'", parts[0]))?;
+    let pitch = parts[1].trim().parse::<f64>()
+        .map_err(|_| anyhow!("Failed to parse pitch: '{}'", parts[1]))?;
+    let yaw = parts[2].trim().parse::<f64>()
+        .map_err(|_| anyhow!("Failed to parse yaw: '{}'", parts[2]))?;
+    
+    Ok([roll, pitch, yaw])
+}
 
 fn init_tracing() {
     let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
@@ -45,6 +61,7 @@ fn main() -> Result<()> {
             metadata,
             gps_geoid,
             tolerate_corruption,
+            pointcloud_rotation,
         } => {
             let options = convert::ConvertOptions {
                 bag_path: bag,
@@ -69,6 +86,10 @@ fn main() -> Result<()> {
                 metadata,
                 gps_geoid,
                 tolerate_corruption,
+                pointcloud_rotation: match pointcloud_rotation {
+                    Some(rotation_str) => Some(parse_pointcloud_rotation(&rotation_str)?),
+                    None => None,
+                },
             };
             convert::convert_bag(&options)
         }
